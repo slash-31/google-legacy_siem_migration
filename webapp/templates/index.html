@@ -19,51 +19,12 @@
         <!-- Auth Status Banner -->
         <div id="auth-status-banner" class="auth-status-banner">
             <div class="status-item">
-                <span id="admin-status-icon" class="status-icon">⏳</span>
-                <span id="admin-status-text">Admin Session: Checking...</span>
-            </div>
-            <div class="status-item">
-                <span id="gcert-status-icon" class="status-icon">⏳</span>
-                <span id="gcert-status-text">gcert: Checking...</span>
-            </div>
-            <div class="status-item">
                 <span id="gcloud-status-icon" class="status-icon">⏳</span>
                 <span id="gcloud-status-text">gcloud: Checking...</span>
-                <button id="gcloud-login-btn" class="hidden" onclick="startGcloudLogin()"
-                    style="background: #4285f4; color: white; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.75rem; margin-left: 8px;">Login</button>
             </div>
             <button onclick="refreshAuthStatus()" title="Re-check auth status"
                 style="background: transparent; border: 1px solid var(--border-color); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 1rem; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); margin-left: auto;"
                 id="auth-refresh-btn">&#x21bb;</button>
-        </div>
-
-        <!-- gcloud Auth Login Modal -->
-        <div id="gcloud-auth-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-            <div style="background: var(--bg-primary, #1e1e1e); border: 1px solid var(--border-color); border-radius: 8px; padding: 25px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
-                <h3 style="margin-top: 0;">gcloud Authentication</h3>
-                <div id="gcloud-auth-step1">
-                    <p>Starting gcloud login...</p>
-                    <div id="gcloud-auth-spinner" style="text-align: center; font-size: 1.5rem;">⏳</div>
-                </div>
-                <div id="gcloud-auth-step2" class="hidden">
-                    <p>Visit this URL to authenticate:</p>
-                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; word-break: break-all; margin-bottom: 15px;">
-                        <a id="gcloud-auth-url" href="#" target="_blank" style="color: #4285f4;"></a>
-                    </div>
-                    <p>After signing in, paste the authorization code below:</p>
-                    <input type="text" id="gcloud-auth-code-input" placeholder="Paste authorization code here"
-                        style="width: 100%; padding: 8px; box-sizing: border-box; font-family: monospace; margin-bottom: 10px;">
-                    <div style="display: flex; gap: 10px;">
-                        <button onclick="submitGcloudAuthCode()" id="gcloud-auth-submit-btn">Submit Code</button>
-                        <button onclick="closeGcloudModal()"
-                            style="background: transparent; border: 1px solid var(--border-color);">Cancel</button>
-                    </div>
-                </div>
-                <div id="gcloud-auth-result" class="hidden">
-                    <p id="gcloud-auth-result-text"></p>
-                    <button onclick="closeGcloudModal()">Close</button>
-                </div>
-            </div>
         </div>
 
         <div class="step-indicator">
@@ -936,35 +897,11 @@
         // ===================== Auth Banner =====================
 
         function renderAuthBanner(status) {
-            const adminIcon = document.getElementById('admin-status-icon');
-            const adminText = document.getElementById('admin-status-text');
-            adminIcon.textContent = '✓';
-            adminIcon.style.color = status.admin_session_valid ? 'var(--success-color)' : 'var(--error-color)';
-            adminText.textContent = `Admin Session: ${status.admin_session_message}`;
-
-            const gcertIcon = document.getElementById('gcert-status-icon');
-            const gcertText = document.getElementById('gcert-status-text');
-            gcertIcon.textContent = '✓';
-            gcertIcon.style.color = status.gcert_valid ? 'var(--success-color)' : 'var(--error-color)';
-            let gcertDisplay = status.gcert_message;
-            const parenMatch = gcertDisplay.match(/\((.+)\)/);
-            if (parenMatch) gcertDisplay = parenMatch[1];
-            gcertText.textContent = `gcert: ${gcertDisplay}`;
-
             const gcloudIcon = document.getElementById('gcloud-status-icon');
             const gcloudText = document.getElementById('gcloud-status-text');
-            const gcloudLoginBtn = document.getElementById('gcloud-login-btn');
-            gcloudIcon.textContent = '✓';
+            gcloudIcon.textContent = status.gcloud_valid ? '✓' : '✗';
             gcloudIcon.style.color = status.gcloud_valid ? 'var(--success-color)' : 'var(--error-color)';
-            let gcloudDisplay = status.gcloud_message || 'Unknown';
-            const gcloudParen = gcloudDisplay.match(/\((.+)\)/);
-            if (gcloudParen) gcloudDisplay = gcloudParen[1];
-            gcloudText.textContent = `gcloud: ${gcloudDisplay}`;
-            if (status.gcloud_valid) {
-                gcloudLoginBtn.classList.add('hidden');
-            } else {
-                gcloudLoginBtn.classList.remove('hidden');
-            }
+            gcloudText.textContent = `gcloud: ${status.gcloud_message || 'Unknown'}`;
         }
 
         async function refreshAuthStatus() {
@@ -986,87 +923,6 @@
             }
         }
 
-        async function startGcloudLogin() {
-            const modal = document.getElementById('gcloud-auth-modal');
-            const step1 = document.getElementById('gcloud-auth-step1');
-            const step2 = document.getElementById('gcloud-auth-step2');
-            const result = document.getElementById('gcloud-auth-result');
-            modal.classList.remove('hidden');
-            modal.style.display = 'flex';
-            step1.classList.remove('hidden');
-            step2.classList.add('hidden');
-            result.classList.add('hidden');
-
-            try {
-                const resp = await fetch('/api/gcloud_auth_login', { method: 'POST' });
-                const data = await resp.json();
-                if (data.success && data.auth_url) {
-                    const urlEl = document.getElementById('gcloud-auth-url');
-                    urlEl.href = data.auth_url;
-                    urlEl.textContent = data.auth_url;
-                    step1.classList.add('hidden');
-                    step2.classList.remove('hidden');
-                    document.getElementById('gcloud-auth-code-input').value = '';
-                    document.getElementById('gcloud-auth-code-input').focus();
-                } else {
-                    step1.innerHTML = `<p style="color: var(--error-color);">Failed to start login: ${data.message || 'Unknown error'}</p>` +
-                        `<button onclick="closeGcloudModal()">Close</button>`;
-                }
-            } catch (e) {
-                step1.innerHTML = `<p style="color: var(--error-color);">Error: ${e}</p>` +
-                    `<button onclick="closeGcloudModal()">Close</button>`;
-            }
-        }
-
-        async function submitGcloudAuthCode() {
-            const code = document.getElementById('gcloud-auth-code-input').value.trim();
-            if (!code) {
-                alert('Please paste the authorization code.');
-                return;
-            }
-            const submitBtn = document.getElementById('gcloud-auth-submit-btn');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Submitting...';
-
-            try {
-                const resp = await fetch('/api/gcloud_auth_code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ auth_code: code })
-                });
-                const data = await resp.json();
-                const step2 = document.getElementById('gcloud-auth-step2');
-                const resultDiv = document.getElementById('gcloud-auth-result');
-                const resultText = document.getElementById('gcloud-auth-result-text');
-                step2.classList.add('hidden');
-                resultDiv.classList.remove('hidden');
-                if (data.success) {
-                    resultText.style.color = 'var(--success-color)';
-                    resultText.textContent = data.message || 'Authentication successful!';
-                    // Refresh auth status
-                    await updateAuthStatus();
-                } else {
-                    resultText.style.color = 'var(--error-color)';
-                    resultText.textContent = data.message || 'Authentication failed.';
-                }
-            } catch (e) {
-                document.getElementById('gcloud-auth-step2').classList.add('hidden');
-                const resultDiv = document.getElementById('gcloud-auth-result');
-                const resultText = document.getElementById('gcloud-auth-result-text');
-                resultDiv.classList.remove('hidden');
-                resultText.style.color = 'var(--error-color)';
-                resultText.textContent = 'Error: ' + e;
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Code';
-            }
-        }
-
-        function closeGcloudModal() {
-            const modal = document.getElementById('gcloud-auth-modal');
-            modal.classList.add('hidden');
-            modal.style.display = 'none';
-        }
 
         // Check auth status on page load and every 60 seconds
         updateAuthStatus();

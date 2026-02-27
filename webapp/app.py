@@ -2,10 +2,8 @@ from flask import Flask, render_template, request, jsonify, session
 import secrets
 import os
 import re
-import select
 import sys
 import subprocess
-import time
 import logging
 
 # Add parent directory to path for imports
@@ -26,7 +24,7 @@ def index():
 
 @app.route('/api/auth_status', methods=['GET'])
 def auth_status():
-    """Get current authentication and authorization status."""
+    """Get current authentication status."""
     status = auth_checker.get_auth_status()
     return jsonify(status)
 
@@ -75,22 +73,17 @@ def run_step1():
     tenant_id = data.get('tenant_id')
     gcp_project_id = data.get('gcp_project_id')
     env = data.get('env', 'prod')
-    
+
     if not tenant_id or not gcp_project_id:
         return jsonify({"error": "Missing required fields"}), 400
-        
+
     result = script_runner.run_step1(tenant_id, gcp_project_id, env=env)
-    
+
     if result.get('success'):
-        # Store key content in session or return it to be stored in frontend state?
-        # Returning it to frontend is easier for "Reveal Variables" button on SPA.
-        # But for security, maybe keep in session? 
-        # Requirement: "Step 1 has been completed... pull client_email... store as a variable... create a button that when clicked will expose the value"
-        
         key_path = result.get('key_path')
         client_email = None
         key_content = None
-        
+
         if key_path and os.path.exists(key_path):
             try:
                 with open(key_path, 'r') as f:
@@ -100,7 +93,7 @@ def run_step1():
                     client_email = key_json.get('client_email')
             except Exception as e:
                 logging.error(f"Failed to read key file: {e}")
-        
+
         return jsonify({
             "success": True,
             "message": result.get('message'),
@@ -116,15 +109,10 @@ def run_step2():
     data = request.json
     tenant_id = data.get('tenant_id')
     soar_fe = data.get('soar_fe')
-    # User wants to perform SAML trace FIRST. 
-    # Step 2 in script is "configure SOAR".
-    # The requirement says: "In step 2 we want to have the customer perform a SAML trace... we do not want to enable SOAR... until we know SAML is passing"
-    # So this endpoint should probably cover the actual "Update SecOps" part, 
-    # and the frontend handles the "Wait for SAML" manual check.
-    
+
     if not tenant_id or not soar_fe:
         return jsonify({"error": "Missing required fields"}), 400
-        
+
     result = script_runner.run_step2(tenant_id, soar_fe)
     return jsonify(result)
 
@@ -153,104 +141,6 @@ def add_partner():
 
     result = script_runner.add_partner_association(tenant_id, partner_code, env=env)
     return jsonify(result)
-
-# Store the running gcloud auth process so we can feed it the auth code later
-_gcloud_auth_process = None
-
-
-@app.route('/api/gcloud_auth_login', methods=['POST'])
-def gcloud_auth_login():
-    """Start gcloud auth login --no-launch-browser and return the auth URL."""
-    global _gcloud_auth_process
-
-    # Kill any previous auth process
-    if _gcloud_auth_process and _gcloud_auth_process.poll() is None:
-        _gcloud_auth_process.terminate()
-        _gcloud_auth_process = None
-
-    try:
-        proc = subprocess.Popen(
-            ['gcloud', 'auth', 'login', '--no-launch-browser'],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-
-        # Read stderr until we find the URL (gcloud prints the prompt to stderr)
-        url = None
-        lines_read = []
-        deadline = time.time() + 15  # 15s timeout
-        while time.time() < deadline:
-            # Check both stdout and stderr for the URL
-            ready, _, _ = select.select(
-                [proc.stdout, proc.stderr], [], [], 1.0
-            )
-            for stream in ready:
-                line = stream.readline()
-                if line:
-                    lines_read.append(line.strip())
-                    # gcloud outputs: "Go to the following link in your browser:\n\n    https://..."
-                    url_match = re.search(r'(https://accounts\.google\.com/\S+)', line)
-                    if url_match:
-                        url = url_match.group(1)
-            if url:
-                break
-
-        if url:
-            _gcloud_auth_process = proc
-            return jsonify({"success": True, "auth_url": url})
-        else:
-            proc.terminate()
-            return jsonify({
-                "success": False,
-                "message": "Could not extract auth URL from gcloud output",
-                "output": lines_read
-            }), 500
-
-    except FileNotFoundError:
-        return jsonify({"success": False, "message": "gcloud CLI not found"}), 500
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route('/api/gcloud_auth_code', methods=['POST'])
-def gcloud_auth_code():
-    """Submit the authorization code to complete gcloud auth login."""
-    global _gcloud_auth_process
-
-    data = request.json
-    auth_code = data.get('auth_code', '').strip()
-
-    if not auth_code:
-        return jsonify({"success": False, "message": "Authorization code is required"}), 400
-
-    if not _gcloud_auth_process or _gcloud_auth_process.poll() is not None:
-        return jsonify({"success": False, "message": "No active auth session. Start login first."}), 400
-
-    try:
-        # Send the auth code to the waiting gcloud process
-        _gcloud_auth_process.stdin.write(auth_code + '\n')
-        _gcloud_auth_process.stdin.flush()
-
-        # Wait for the process to complete
-        stdout, stderr = _gcloud_auth_process.communicate(timeout=30)
-        rc = _gcloud_auth_process.returncode
-        _gcloud_auth_process = None
-
-        combined = (stdout or '') + (stderr or '')
-        if rc == 0 or 'You are now logged in' in combined:
-            return jsonify({"success": True, "message": "gcloud authentication successful"})
-        else:
-            return jsonify({"success": False, "message": f"Auth failed: {combined[-300:]}"}), 500
-
-    except subprocess.TimeoutExpired:
-        _gcloud_auth_process.terminate()
-        _gcloud_auth_process = None
-        return jsonify({"success": False, "message": "Auth code submission timed out"}), 500
-    except Exception as e:
-        _gcloud_auth_process = None
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route('/api/set_gcloud_project', methods=['POST'])
@@ -292,7 +182,7 @@ if __name__ == '__main__':
     import ssl
     import socket
 
-    # Check authentication status (warnings only, does not block startup)
+    # Check gcloud authentication — exits if not authenticated with @google.com
     auth_checker.validate_startup_requirements()
 
     # SSL/TLS Configuration
