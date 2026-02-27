@@ -19,6 +19,14 @@
         <!-- Auth Status Banner -->
         <div id="auth-status-banner" class="auth-status-banner">
             <div class="status-item">
+                <span id="admin-status-icon" class="status-icon">⏳</span>
+                <span id="admin-status-text">Admin Session: Checking...</span>
+            </div>
+            <div class="status-item">
+                <span id="gcert-status-icon" class="status-icon">⏳</span>
+                <span id="gcert-status-text">gcert: Checking...</span>
+            </div>
+            <div class="status-item">
                 <span id="gcloud-status-icon" class="status-icon">⏳</span>
                 <span id="gcloud-status-text">gcloud: Checking...</span>
             </div>
@@ -897,6 +905,18 @@
         // ===================== Auth Banner =====================
 
         function renderAuthBanner(status) {
+            const adminIcon = document.getElementById('admin-status-icon');
+            const adminText = document.getElementById('admin-status-text');
+            adminIcon.textContent = status.admin_session_valid ? '✓' : '✗';
+            adminIcon.style.color = status.admin_session_valid ? 'var(--success-color)' : 'var(--error-color)';
+            adminText.textContent = `Admin Session: ${status.admin_session_message}`;
+
+            const gcertIcon = document.getElementById('gcert-status-icon');
+            const gcertText = document.getElementById('gcert-status-text');
+            gcertIcon.textContent = status.gcert_valid ? '✓' : '✗';
+            gcertIcon.style.color = status.gcert_valid ? 'var(--success-color)' : 'var(--error-color)';
+            gcertText.textContent = `gcert: ${status.gcert_message}`;
+
             const gcloudIcon = document.getElementById('gcloud-status-icon');
             const gcloudText = document.getElementById('gcloud-status-text');
             gcloudIcon.textContent = status.gcloud_valid ? '✓' : '✗';
