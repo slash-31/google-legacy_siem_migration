@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecOps Migration Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>SecOps Migration Assistant</h1>
+
+        <!-- Auth Status Banner -->
+        <div id="auth-status-banner" class="auth-status-banner">
+            <div class="status-item">
+                <span id="admin-status-icon" class="status-icon">⏳</span>
+                <span id="admin-status-text">Admin Session: Checking...</span>
+            </div>
+            <div class="status-item">
+                <span id="gcert-status-icon" class="status-icon">⏳</span>
+                <span id="gcert-status-text">gcert: Checking...</span>
+            </div>
+            <div class="status-item">
+                <span id="gcloud-status-icon" class="status-icon">⏳</span>
+                <span id="gcloud-status-text">gcloud: Checking...</span>
+                <button id="gcloud-login-btn" class="hidden" onclick="startGcloudLogin()"
+                    style="background: #4285f4; color: white; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.75rem; margin-left: 8px;">Login</button>
+            </div>
+            <button onclick="refreshAuthStatus()" title="Re-check auth status"
+                style="background: transparent; border: 1px solid var(--border-color); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 1rem; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); margin-left: auto;"
+                id="auth-refresh-btn">&#x21bb;</button>
+        </div>
+
+        <!-- gcloud Auth Login Modal -->
+        <div id="gcloud-auth-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+            <div style="background: var(--bg-primary, #1e1e1e); border: 1px solid var(--border-color); border-radius: 8px; padding: 25px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                <h3 style="margin-top: 0;">gcloud Authentication</h3>
+                <div id="gcloud-auth-step1">
+                    <p>Starting gcloud login...</p>
+                    <div id="gcloud-auth-spinner" style="text-align: center; font-size: 1.5rem;">⏳</div>
+                </div>
+                <div id="gcloud-auth-step2" class="hidden">
+                    <p>Visit this URL to authenticate:</p>
+                    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; word-break: break-all; margin-bottom: 15px;">
+                        <a id="gcloud-auth-url" href="#" target="_blank" style="color: #4285f4;"></a>
+                    </div>
+                    <p>After signing in, paste the authorization code below:</p>
+                    <input type="text" id="gcloud-auth-code-input" placeholder="Paste authorization code here"
+                        style="width: 100%; padding: 8px; box-sizing: border-box; font-family: monospace; margin-bottom: 10px;">
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="submitGcloudAuthCode()" id="gcloud-auth-submit-btn">Submit Code</button>
+                        <button onclick="closeGcloudModal()"
+                            style="background: transparent; border: 1px solid var(--border-color);">Cancel</button>
+                    </div>
+                </div>
+                <div id="gcloud-auth-result" class="hidden">
+                    <p id="gcloud-auth-result-text"></p>
+                    <button onclick="closeGcloudModal()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="step-indicator">
+            <div id="ind-step0" class="step active">1. Start</div>
+            <div id="ind-step1" class="step">2. Details</div>
+            <div id="ind-step2" class="step">3. Pre-Check</div>
+            <div id="ind-step3" class="step">4. Auth</div>
+            <div id="ind-step4" class="step">5. SOAR Review</div>
+            <div id="ind-step5" class="step">6. Config</div>
+        </div>
+
+        <!-- ===================== Step 0: Getting Started ===================== -->
+        <div id="step0" class="section">
+            <h2>Getting Started</h2>
+
+            <div class="status-box" style="background: rgba(66,133,244,0.1); border-left: 4px solid #4285f4;">
+                <strong>Requirements</strong>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; line-height: 1.8;">
+                    <li>Run from a <strong>privileged workstation</strong> with network access</li>
+                    <li>Valid <strong>gcert</strong> certificate (run <code>gcert</code> if expired)</li>
+                    <li>Active <strong>admin_session</strong> with a tracking ticket</li>
+                    <li><strong>gcloud</strong> authenticated with your corporate account</li>
+                    <li>The customer's <strong>SecOps Tenant ID</strong> (UUID format)</li>
+                </ul>
+            </div>
+
+            <div class="status-box" style="background: rgba(255,193,7,0.1); border-left: 4px solid #ffc107; margin-top: 15px;">
+                <strong>Information You'll Need</strong>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; line-height: 1.8;">
+                    <li>SecOps <strong>Tenant ID</strong> (UUID)</li>
+                    <li><strong>Ticket ID</strong> number</li>
+                    <li><strong>First Name</strong>, <strong>Last Name</strong>, <strong>Email</strong> (for SOAR provisioning)</li>
+                    <li><strong>Vector Account ID</strong> and <strong>Opportunity ID</strong></li>
+                    <li>SecOps <strong>Admin Group</strong> (IdP group for admin access)</li>
+                    <li><strong>License Type</strong> from contract (Standard, Enterprise, or Enterprise Plus)</li>
+                    <li><strong>License Expiration Date</strong> from contract</li>
+                    <li>Customer <strong>Region</strong> requirements</li>
+                </ul>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Ticket ID</label>
+                <input type="text" id="bug_id" placeholder="e.g. YOUR_TICKET_ID" required>
+                <small style="color: var(--text-secondary);">Run: <code>admin_session --reason='b/YOUR_BUG_ID'</code></small>
+            </div>
+
+            <div class="form-group">
+                <label>SecOps Tenant ID</label>
+                <input type="text" id="tenant_id" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required>
+            </div>
+
+            <div id="start-error" class="hidden" style="color: var(--error-color); margin-bottom: 10px;"></div>
+
+            <button onclick="getStarted()">Get Started</button>
+        </div>
+
+        <!-- ===================== Step 1: Customer Info + Migration Details ===================== -->
+        <div id="step1" class="section hidden">
+            <h2>Customer Information</h2>
+
+            <!-- Customer Info Display -->
+            <div id="customer-info-display" class="status-box" style="font-family: monospace; font-size: 0.85rem; max-height: 350px; overflow-y: auto;"></div>
+
+            <!-- SOAR Status -->
+            <div id="soar-status-panel" class="hidden" style="margin-top: 15px;">
+                <div id="soar-status-display" class="status-box"></div>
+            </div>
+
+            <h2 style="margin-top: 25px;">Migration Details</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">Fields auto-populated from customer info. Fill in any missing values.</p>
+
+            <!-- CSV Upload Section -->
+            <div class="csv-upload-section" style="background: rgba(255,165,0,0.1); padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid orange;">
+                <strong>Quick Load:</strong> Upload a CSV to override form fields
+                <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                    <input type="file" id="csvFileInput" accept=".csv" style="flex: 1; padding: 5px;">
+                    <button onclick="loadCSV()" style="background: #ff8c00; padding: 8px 15px;">Load CSV</button>
+                </div>
+                <div id="csvStatus" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);"></div>
+            </div>
+
+            <div class="form-group">
+                <label>GCP Project ID</label>
+                <input type="text" id="gcp_project_id" placeholder="e.g. project-example123" required>
+            </div>
+
+            <div class="form-group">
+                <label>SOAR Frontend ID</label>
+                <input type="text" id="soar_fe" placeholder="Derived from customer_code">
+            </div>
+
+            <h3>Partner Information</h3>
+            <div class="form-group">
+                <label>Partner Code (if applicable)</label>
+                <input type="text" id="partner_code" placeholder="e.g. MYPARTNER">
+            </div>
+            <div class="form-group">
+                <label>SecOps Admin Group</label>
+                <input type="text" id="admin_group" placeholder="No spaces">
+            </div>
+
+            <h3>Additional Info</h3>
+            <div class="form-group">
+                <label>Vector ID</label>
+                <input type="text" id="vector_id">
+            </div>
+            <div class="form-group">
+                <label>Opportunity ID</label>
+                <input type="text" id="opp_id">
+            </div>
+            <div class="form-group">
+                <label>First Name</label>
+                <input type="text" id="first_name">
+            </div>
+            <div class="form-group">
+                <label>Last Name</label>
+                <input type="text" id="last_name">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email">
+            </div>
+            <div class="form-group">
+                <label>License Type</label>
+                <select id="license_type" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-primary); font-size: 0.95rem;">
+                    <option value="">-- Select --</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Enterprise">Enterprise</option>
+                    <option value="Enterprise Plus">Enterprise Plus</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>License Expiration Date</label>
+                <input type="date" id="expiration_date">
+            </div>
+
+            <button onclick="startPreCheck()">Next: Run Pre-Checks</button>
+            <button onclick="goToStep(0)"
+                style="background: transparent; border: 1px solid var(--border-color);">Back</button>
+        </div>
+
+        <!-- ===================== Step 2: Pre-Check Results ===================== -->
+        <div id="step2" class="section hidden">
+            <h2>Pre-Check Results</h2>
+            <div id="precheck-status" class="status-box">Checking...</div>
+            <br>
+            <button id="step2-next" class="hidden" onclick="checkPartnerAssociation()">Next: Partner Check</button>
+            <button id="rerun-prechecks" class="hidden" onclick="startPreCheck()"
+                style="background: #ff8c00;">Re-run Pre-Checks</button>
+            <button onclick="goToStep(1)"
+                style="background: transparent; border: 1px solid var(--border-color);">Back</button>
+        </div>
+
+        <!-- ===================== Step 2.5: Partner Association Fix ===================== -->
+        <div id="step2-5" class="section hidden">
+            <h2>Partner Association Check</h2>
+            <div class="status-box" style="background: rgba(255, 165, 0, 0.1); border-left: 4px solid orange;">
+                <strong>Partner Code Detected:</strong> <span id="partner-code-display"></span>
+            </div>
+            <p>If a partner association exists, we must remove it, update C4 entitlements, and then re-add it.</p>
+
+            <div style="margin-bottom: 15px;">
+                <button onclick="skipPartnerFlow()"
+                    style="background: transparent; border: 1px solid var(--border-color);">Skip Partner Removal (not needed)</button>
+            </div>
+
+            <div id="partner-flow-1">
+                <button onclick="removePartner()">1. Remove Partner Association</button>
+                <div id="remove-status" class="status-box hidden"></div>
+            </div>
+
+            <div id="partner-flow-2" class="hidden"
+                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <h3>Manual Action Required</h3>
+                <p>Please go to <strong>C4</strong> and update the customer entitlements to match what they purchased.</p>
+                <button onclick="confirmC4Update()">2. I have updated C4 Entitlements</button>
+            </div>
+
+            <div id="partner-flow-3" class="hidden"
+                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <button onclick="addPartner()">3. Re-add Partner Association</button>
+                <div id="add-status" class="status-box hidden"></div>
+            </div>
+
+            <div id="partner-flow-n" class="hidden" style="margin-top: 20px;">
+                <button onclick="runStep1()">Proceed to Auth Generation</button>
+            </div>
+        </div>
+
+        <!-- ===================== Step 3: Auth Generation ===================== -->
+        <div id="step3" class="section hidden">
+            <h2>Step 1: Enable Auth & Generate Keys</h2>
+            <div id="step1-status" class="status-box">Running...</div>
+
+            <div id="vars-reveal" class="hidden variables-container">
+                <h3>Authentication Successfully Configured</h3>
+                <p>Client Email: <span id="client-email-display"
+                        style="font-weight: bold; color: var(--accent-color);"></span></p>
+                <button onclick="toggleKeyContent()">Toggle Full JWT Content</button>
+                <pre id="key-content-display" class="hidden"></pre>
+            </div>
+
+            <br>
+            <button id="step3-next" class="hidden" onclick="waitForSoar()">Next: Wait for SOAR</button>
+        </div>
+
+        <!-- ===================== Step 4: Wait for SOAR & SAML ===================== -->
+        <div id="step4" class="section hidden">
+            <h2>Create SOAR Instance</h2>
+
+            <div class="status-box" style="background: rgba(66,133,244,0.1); border-left: 4px solid #4285f4;">
+                <strong>Instructions</strong>
+                <ol style="margin: 8px 0 0 0; padding-left: 20px; line-height: 1.8;">
+                    <li>Go to your SOAR provisioning tool</li>
+                    <li>In the deployment window, click <strong>New</strong> &rarr; <strong>Create Environment</strong></li>
+                    <li>Fill in the fields using the values below</li>
+                </ol>
+            </div>
+
+            <h3 style="margin-top: 20px;">Provisioning Field Values</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">Click any value to copy it to your clipboard.</p>
+
+            <div style="overflow-x: auto;">
+                <table id="provisioning-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
+                            <th style="padding: 8px 12px;">Field</th>
+                            <th style="padding: 8px 12px;">Value</th>
+                            <th style="padding: 8px 12px; color: var(--text-secondary);">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="provisioning-table-body">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="backstory-json-section" class="hidden" style="margin-top: 15px;">
+                <button onclick="toggleBackstoryJson()" style="background: transparent; border: 1px solid var(--border-color); font-size: 0.85rem; padding: 6px 12px;">
+                    Toggle SecOps BackStory JSON
+                </button>
+                <pre id="backstory-json-display" class="hidden" style="margin-top: 10px; max-height: 300px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 0.8rem; cursor: pointer;" onclick="copyToClipboard(this.innerText, this)"></pre>
+            </div>
+
+            <hr style="border-color: var(--border-color); margin: 25px 0;">
+
+            <h3>SAML Verification</h3>
+            <p style="color: var(--text-secondary);">Ask the customer to perform a SAML trace and verify the groups passed include the SecOps Admin Group.</p>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="saml-verified">
+                    I have verified the SAML trace allows the SecOps Admin Group identified earlier.
+                </label>
+            </div>
+            <button id="step4-next" onclick="runStep2()" disabled>Next: Configure SOAR</button>
+        </div>
+
+        <!-- ===================== Step 5: Final Config ===================== -->
+        <div id="step5" class="section hidden">
+            <h2>Step 2: Update SOAR Configuration</h2>
+            <div id="step2-status" class="status-box">Running...</div>
+            <br>
+            <button onclick="location.reload()">Start New Migration</button>
+        </div>
+
+    </div>
+
+    <script>
+        let currentState = {
+            bug_id: '',
+            tenant_id: '',
+            gcp_project_id: '',
+            soar_fe: '',
+            partner_code: '',
+            key_content: '',
+            client_email: '',
+            license_type: '',
+            expiration_date: '',
+            admin_group: '',
+            vector_id: '',
+            opp_id: '',
+            first_name: '',
+            last_name: '',
+            email: '',
+            customer_name: '',
+            frontend_path: '',
+            region: ''
+        };
+
+        // Fields locked by customer info — not editable by CSV or manual input
+        const lockedFields = new Set();
+
+        // ===================== Navigation =====================
+
+        function goToStep(index) {
+            document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+
+            let id = 'step' + index;
+            if (index === 2.5) id = 'step2-5';
+
+            document.getElementById(id).classList.remove('hidden');
+
+            document.querySelectorAll('.step-indicator .step').forEach((el, i) => {
+                let visualIndex = Math.floor(index);
+                if (i < visualIndex) el.classList.add('completed');
+                else el.classList.remove('completed');
+                if (i === visualIndex) el.classList.add('active');
+                else el.classList.remove('active');
+            });
+        }
+
+        // ===================== Step 0: Get Started =====================
+
+        async function getStarted() {
+            const bugId = document.getElementById('bug_id').value.trim();
+            const tenantId = document.getElementById('tenant_id').value.trim();
+            const errorDiv = document.getElementById('start-error');
+            errorDiv.classList.add('hidden');
+
+            if (!bugId || !tenantId) {
+                errorDiv.textContent = 'Please fill in both Ticket ID and Tenant ID.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            currentState.bug_id = bugId;
+            currentState.tenant_id = tenantId;
+
+            // Validate auth first
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('hidden');
+            errorDiv.style.color = 'var(--text-secondary)';
+            errorDiv.textContent = 'Validating admin_session and gcert...';
+
+            try {
+                const authResponse = await fetch('/api/auth_status');
+                const authStatus = await authResponse.json();
+
+                // Update banner
+                renderAuthBanner(authStatus);
+
+                if (!authStatus.gcert_valid) {
+                    errorDiv.style.color = 'var(--error-color)';
+                    errorDiv.textContent = 'gcert is not valid. Run: gcert';
+                    return;
+                }
+
+                // Fetch customer info
+                errorDiv.style.color = 'var(--text-secondary)';
+                errorDiv.textContent = 'Fetching customer information...';
+
+                const infoResponse = await fetch('/api/check_customer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenant_id: tenantId })
+                });
+                const infoData = await infoResponse.json();
+
+                if (infoData.error) {
+                    errorDiv.style.color = 'var(--error-color)';
+                    errorDiv.textContent = 'Failed to fetch customer info: ' + (infoData.error || 'Unknown error');
+                    return;
+                }
+
+                errorDiv.classList.add('hidden');
+
+                // Populate step 1 with customer info
+                const info = infoData.customer_info || infoData;
+                populateFromCustomerInfo(info);
+
+                // Show SOAR status
+                if (infoData.byop_status || info.customer_features) {
+                    showSoarStatus(info);
+                }
+
+                goToStep(1);
+
+            } catch (e) {
+                errorDiv.style.color = 'var(--error-color)';
+                errorDiv.textContent = 'Error: ' + e;
+            }
+        }
+
+        function populateFromCustomerInfo(info) {
+            // Render customer info table
+            const infoDisplay = document.getElementById('customer-info-display');
+            let html = '<table style="width: 100%; border-collapse: collapse;">';
+            const keyOrder = ['customer_id', 'customer_code', 'customer_name', 'gcp_project_id',
+                              'region', 'frontend_paths', 'partner_code', 'response_platform_uri',
+                              'soar_api_uri'];
+
+            const shown = new Set();
+            keyOrder.forEach(key => {
+                if (info[key] !== undefined) {
+                    html += formatInfoRow(key, info[key]);
+                    shown.add(key);
+                }
+            });
+            Object.keys(info).forEach(key => {
+                if (!shown.has(key) && key !== 'customer_features') {
+                    html += formatInfoRow(key, info[key]);
+                }
+            });
+            if (info.customer_features) {
+                // Filter out numeric key:value pairs (e.g. 123: 456)
+                const filteredFeatures = Object.entries(info.customer_features).filter(([k, v]) => {
+                    return !(String(k).match(/^\d+$/) && String(v).match(/^\d+$/));
+                });
+                const featCount = filteredFeatures.length;
+                html += `<tr><td colspan="2" style="padding: 4px 0; border-top: 1px solid var(--border-color);">`;
+                html += `<details><summary style="cursor: pointer;"><strong>customer_features</strong> (${featCount} flags)</summary>`;
+                html += `<div style="margin-top: 5px;">`;
+                filteredFeatures.forEach(([k, v]) => {
+                    const color = v === true ? 'var(--success-color)' : (v === false ? 'var(--text-secondary)' : 'inherit');
+                    html += `<span style="color: ${color};">${k}: ${v}</span><br>`;
+                });
+                html += `</div></details></td></tr>`;
+            }
+            html += '</table>';
+            infoDisplay.innerHTML = html;
+
+            // Auto-fill form fields from customer info and lock them
+            function lockField(fieldId, value) {
+                const el = document.getElementById(fieldId);
+                if (el) {
+                    el.value = value;
+                    el.readOnly = true;
+                    el.style.opacity = '0.7';
+                    el.style.cursor = 'not-allowed';
+                    el.style.background = 'rgba(255,255,255,0.05)';
+                    el.title = 'Auto-populated from customer info (read-only)';
+                    lockedFields.add(fieldId);
+                }
+            }
+
+            if (info.gcp_project_id) {
+                lockField('gcp_project_id', info.gcp_project_id);
+                currentState.gcp_project_id = info.gcp_project_id;
+            }
+
+            // soar_fe = customer_code lowercased
+            if (info.customer_code) {
+                const soarFe = info.customer_code.toLowerCase();
+                lockField('soar_fe', soarFe);
+                currentState.soar_fe = soarFe;
+            }
+
+            // partner_code
+            if (info.partner_code) {
+                lockField('partner_code', info.partner_code);
+                currentState.partner_code = info.partner_code;
+            }
+
+            // customer_name
+            if (info.customer_name) {
+                currentState.customer_name = info.customer_name;
+            }
+
+            // frontend_path (first element if array)
+            if (info.frontend_paths) {
+                const fp = Array.isArray(info.frontend_paths) ? info.frontend_paths[0] : info.frontend_paths;
+                currentState.frontend_path = fp;
+            }
+
+            // region
+            if (info.region) {
+                currentState.region = info.region;
+            }
+        }
+
+        function showSoarStatus(info) {
+            const features = info.customer_features || {};
+            const rpUri = info.response_platform_uri || {};
+
+            const soarEnabled = features.soar_enabled === true;
+            const soarUri = (typeof rpUri === 'object') ? (rpUri.base_uri || '') : '';
+            const alreadyConfigured = soarEnabled && soarUri;
+
+            const panel = document.getElementById('soar-status-panel');
+            const display = document.getElementById('soar-status-display');
+            panel.classList.remove('hidden');
+
+            let html = '<strong>SOAR Status</strong><br>';
+            if (alreadyConfigured) {
+                html += `<span style="color: var(--success-color);">✓ SOAR is already configured</span><br>`;
+                html += `URI: ${soarUri}<br>`;
+                html += `soar_enabled: true`;
+                display.style.borderLeft = '4px solid var(--success-color)';
+                display.style.background = 'rgba(0,255,0,0.1)';
+            } else {
+                html += `soar_enabled: ${soarEnabled ? 'true' : 'false'}<br>`;
+                html += `SOAR URI: ${soarUri || 'Not set'}<br>`;
+                html += `SOAR FE (from customer_code): <strong>${currentState.soar_fe || 'Unknown'}</strong>`;
+                display.style.borderLeft = '4px solid orange';
+                display.style.background = 'rgba(255,165,0,0.1)';
+            }
+            display.innerHTML = html;
+        }
+
+        // ===================== Step 2: Pre-Checks =====================
+
+        async function startPreCheck() {
+            // Capture latest form values
+            currentState.gcp_project_id = document.getElementById('gcp_project_id').value.trim();
+            currentState.soar_fe = document.getElementById('soar_fe').value.trim();
+            currentState.partner_code = document.getElementById('partner_code').value.trim();
+            currentState.admin_group = document.getElementById('admin_group').value.trim();
+            currentState.vector_id = document.getElementById('vector_id').value.trim();
+            currentState.opp_id = document.getElementById('opp_id').value.trim();
+            currentState.first_name = document.getElementById('first_name').value.trim();
+            currentState.last_name = document.getElementById('last_name').value.trim();
+            currentState.email = document.getElementById('email').value.trim();
+            currentState.license_type = document.getElementById('license_type').value;
+            currentState.expiration_date = document.getElementById('expiration_date').value;
+
+            if (!currentState.tenant_id || !currentState.gcp_project_id) {
+                alert("Please fill in Tenant ID and GCP Project ID");
+                return;
+            }
+
+            goToStep(2);
+            const statusBox = document.getElementById('precheck-status');
+            statusBox.innerHTML = "Running pre-checks...<br><br>" +
+                "⏳ gcloud authentication...<br>⏳ GCP project access...<br>" +
+                "⏳ gcloud project context...<br>⏳ service account...<br>⏳ existing keys...";
+            statusBox.className = "status-box";
+
+            try {
+                const resp = await fetch('/api/precheck_step1', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tenant_id: currentState.tenant_id,
+                        gcp_project_id: currentState.gcp_project_id
+                    })
+                });
+                const data = await resp.json();
+
+                let html = `<strong>Pre-Check Results</strong><br><br>`;
+
+                data.checks.forEach(check => {
+                    const icon = check.passed ? '✓' : (check.critical ? '✗' : '⚠');
+                    const color = check.passed ? 'var(--success-color)' : (check.critical ? 'var(--error-color)' : 'orange');
+                    const badge = check.critical ? ' [CRITICAL]' : '';
+                    html += `<span style="color: ${color}; font-weight: bold;">${icon}</span> `;
+                    html += `<strong>${check.name}${badge}:</strong> ${check.message}`;
+                    // Add "Set Project" button for failed gcloud Project Context check
+                    if (check.name === 'gcloud Project Context' && !check.passed && currentState.gcp_project_id) {
+                        html += ` <button onclick="setGcloudProject()" style="background: #ff8c00; color: white; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.8rem; margin-left: 8px;">Set Project</button>`;
+                    }
+                    html += `<br>`;
+                });
+
+                html += `<br>`;
+
+                if (data.ready_to_proceed) {
+                    html += `<div style="background: rgba(0,255,0,0.1); padding: 10px; border-left: 4px solid var(--success-color); margin-top: 10px;">`;
+                    html += `<strong style="color: var(--success-color);">✓ Ready to Proceed</strong><br>`;
+                    html += `All critical checks passed.`;
+                    html += `</div>`;
+                    statusBox.className = "status-box status-success";
+                    document.getElementById('step2-next').classList.remove('hidden');
+                    document.getElementById('rerun-prechecks').classList.add('hidden');
+                } else {
+                    html += `<div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 4px solid var(--error-color); margin-top: 10px;">`;
+                    html += `<strong style="color: var(--error-color);">✗ Cannot Proceed</strong><br>`;
+                    html += `Critical failures: ${data.critical_failures.join(', ')}<br>`;
+                    html += `Fix these issues, then click "Re-run Pre-Checks".`;
+                    html += `</div>`;
+                    statusBox.className = "status-box status-error";
+                    document.getElementById('step2-next').classList.add('hidden');
+                    document.getElementById('rerun-prechecks').classList.remove('hidden');
+                }
+
+                if (data.warnings && data.warnings.length > 0) {
+                    html += `<br><div style="background: rgba(255,165,0,0.1); padding: 10px; border-left: 4px solid orange; margin-top: 10px;">`;
+                    html += `<strong style="color: orange;">⚠ Warnings:</strong><br>`;
+                    data.warnings.forEach(w => { html += `&bull; ${w}<br>`; });
+                    html += `</div>`;
+                }
+
+                statusBox.innerHTML = html;
+
+            } catch (e) {
+                statusBox.innerHTML = `<strong>Pre-Check Error</strong><br><br>` +
+                    `<span style="color: var(--error-color);">✗</span> ${e}<br><br>` +
+                    `This may indicate network issues or missing tools.`;
+                statusBox.className = "status-box status-error";
+                document.getElementById('step2-next').classList.add('hidden');
+                document.getElementById('rerun-prechecks').classList.remove('hidden');
+            }
+        }
+
+        async function setGcloudProject() {
+            const projectId = currentState.gcp_project_id;
+            if (!projectId) return;
+            try {
+                const resp = await fetch('/api/set_gcloud_project', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: projectId })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    // Re-run pre-checks automatically
+                    startPreCheck();
+                } else {
+                    alert('Failed to set project: ' + (data.message || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error setting project: ' + e);
+            }
+        }
+
+        // ===================== Step 2.5: Partner Association =====================
+
+        function checkPartnerAssociation() {
+            if (currentState.partner_code && currentState.partner_code.trim() !== '') {
+                goToStep(2.5);
+                document.getElementById('partner-code-display').innerText = currentState.partner_code;
+            } else {
+                runStep1();
+            }
+        }
+
+        function skipPartnerFlow() {
+            runStep1();
+        }
+
+        async function removePartner() {
+            const statusBox = document.getElementById('remove-status');
+            statusBox.classList.remove('hidden');
+            statusBox.innerHTML = "Removing partner...";
+
+            try {
+                const response = await fetch('/api/remove_partner', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentState)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    statusBox.innerHTML = "Success: " + data.message;
+                    statusBox.className = "status-box status-success";
+                    document.getElementById('partner-flow-2').classList.remove('hidden');
+                } else {
+                    statusBox.innerHTML = "Error: " + data.message;
+                    statusBox.className = "status-box status-error";
+                }
+            } catch (e) {
+                statusBox.innerHTML = "Error: " + e;
+                statusBox.className = "status-box status-error";
+            }
+        }
+
+        function confirmC4Update() {
+            document.getElementById('partner-flow-3').classList.remove('hidden');
+        }
+
+        async function addPartner() {
+            const statusBox = document.getElementById('add-status');
+            statusBox.classList.remove('hidden');
+            statusBox.innerHTML = "Re-adding partner...";
+
+            try {
+                const response = await fetch('/api/add_partner', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentState)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    statusBox.innerHTML = "Success: " + data.message;
+                    statusBox.className = "status-box status-success";
+                    document.getElementById('partner-flow-n').classList.remove('hidden');
+                } else {
+                    statusBox.innerHTML = "Error: " + data.message;
+                    statusBox.className = "status-box status-error";
+                }
+            } catch (e) {
+                statusBox.innerHTML = "Error: " + e;
+                statusBox.className = "status-box status-error";
+            }
+        }
+
+        // ===================== Step 3: Auth Generation =====================
+
+        async function runStep1() {
+            goToStep(3);
+            const statusBox = document.getElementById('step1-status');
+            statusBox.innerHTML = "Running Step 1 (Auth & Key Gen)... This may take a minute.";
+
+            try {
+                const response = await fetch('/api/run_step1', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentState)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    statusBox.innerHTML = "Success! " + data.message;
+                    statusBox.className = "status-box status-success";
+
+                    if (data.client_email) {
+                        currentState.client_email = data.client_email;
+                        currentState.key_content = data.key_content;
+                        document.getElementById('client-email-display').innerText = data.client_email;
+                        document.getElementById('key-content-display').innerText = data.key_content;
+                        document.getElementById('vars-reveal').classList.remove('hidden');
+                    }
+
+                    document.getElementById('step3-next').classList.remove('hidden');
+                } else {
+                    statusBox.innerHTML = "Failed: " + data.message;
+                    statusBox.className = "status-box status-error";
+                }
+            } catch (e) {
+                statusBox.innerHTML = "Error: " + e;
+                statusBox.className = "status-box status-error";
+            }
+        }
+
+        function toggleKeyContent() {
+            document.getElementById('key-content-display').classList.toggle('hidden');
+        }
+
+        // ===================== Step 4: SOAR Review =====================
+
+        function waitForSoar() {
+            goToStep(4);
+
+            const fp = currentState.frontend_path || currentState.soar_fe || '';
+            const frontendUrl = fp ? `https://${fp}.backstory.chronicle.security/` : '';
+
+            const provisioningFields = [
+                { field: 'Customer Domain Name', value: currentState.soar_fe, source: 'customer_code (lowercase)' },
+                { field: 'Customer Display Name', value: currentState.customer_name, source: 'Customer info' },
+                { field: 'First Name', value: currentState.first_name, source: 'Step 1 form' },
+                { field: 'Last Name', value: currentState.last_name, source: 'Step 1 form' },
+                { field: 'Email', value: currentState.email, source: 'Step 1 form' },
+                { field: 'Type', value: 'Production', source: '(fixed)' },
+                { field: 'Vector Account ID', value: currentState.vector_id, source: 'Step 1 form' },
+                { field: 'Vector Opportunity ID', value: currentState.opp_id, source: 'Step 1 form' },
+                { field: 'Pricing Model', value: 'SecOps Package', source: '(fixed)' },
+                { field: 'License Type', value: currentState.license_type, source: 'Step 1 form' },
+                { field: 'Custom Expiration Date', value: currentState.expiration_date, source: 'Step 1 form' },
+                { field: 'Region', value: currentState.region, source: 'Customer info' },
+                { field: 'Platform Type', value: 'SecOps Platform', source: '(fixed)' },
+                { field: 'SecOps Auth SA Email', value: currentState.client_email, source: 'Generated in Step 3' },
+                { field: 'SecOps IdP Admin Group', value: currentState.admin_group, source: 'Step 1 form' },
+                { field: 'Frontend Path', value: frontendUrl, source: 'Customer info' },
+            ];
+
+            const tbody = document.getElementById('provisioning-table-body');
+            tbody.innerHTML = '';
+
+            provisioningFields.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+
+                const tdField = document.createElement('td');
+                tdField.style.padding = '8px 12px';
+                tdField.style.fontWeight = 'bold';
+                tdField.style.whiteSpace = 'nowrap';
+                tdField.textContent = row.field;
+
+                const tdValue = document.createElement('td');
+                tdValue.style.padding = '8px 12px';
+                const valueSpan = document.createElement('span');
+                valueSpan.style.cursor = 'pointer';
+                valueSpan.style.padding = '2px 6px';
+                valueSpan.style.borderRadius = '3px';
+                valueSpan.style.transition = 'background 0.2s';
+                if (row.value) {
+                    valueSpan.textContent = row.value;
+                    valueSpan.style.color = 'var(--accent-color)';
+                    valueSpan.style.background = 'rgba(66,133,244,0.1)';
+                    valueSpan.title = 'Click to copy';
+                    valueSpan.onclick = function() { copyToClipboard(row.value, this); };
+                } else {
+                    valueSpan.textContent = '(not set)';
+                    valueSpan.style.color = 'var(--text-secondary)';
+                    valueSpan.style.fontStyle = 'italic';
+                }
+                tdValue.appendChild(valueSpan);
+
+                const tdSource = document.createElement('td');
+                tdSource.style.padding = '8px 12px';
+                tdSource.style.color = 'var(--text-secondary)';
+                tdSource.style.fontSize = '0.85rem';
+                tdSource.textContent = row.source;
+
+                tr.appendChild(tdField);
+                tr.appendChild(tdValue);
+                tr.appendChild(tdSource);
+                tbody.appendChild(tr);
+            });
+
+            // BackStory JSON section
+            if (currentState.key_content) {
+                const jsonSection = document.getElementById('backstory-json-section');
+                jsonSection.classList.remove('hidden');
+                document.getElementById('backstory-json-display').innerText = currentState.key_content;
+            }
+
+            const checkbox = document.getElementById('saml-verified');
+            checkbox.addEventListener('change', (e) => {
+                document.getElementById('step4-next').disabled = !e.target.checked;
+            });
+        }
+
+        function toggleBackstoryJson() {
+            document.getElementById('backstory-json-display').classList.toggle('hidden');
+        }
+
+        function copyToClipboard(text, element) {
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = element.style.background;
+                element.style.background = 'rgba(0,255,0,0.2)';
+                setTimeout(() => { element.style.background = orig; }, 600);
+            }).catch(() => {});
+        }
+
+        // ===================== Step 5: Config =====================
+
+        async function runStep2() {
+            goToStep(5);
+            const statusBox = document.getElementById('step2-status');
+            statusBox.innerHTML = "Running Step 2 (SOAR Config)...";
+
+            try {
+                const response = await fetch('/api/run_step2', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentState)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    statusBox.innerHTML = "Success! SOAR Enabled.";
+                    statusBox.className = "status-box status-success";
+                } else {
+                    statusBox.innerHTML = "Failed: " + data.message;
+                    statusBox.className = "status-box status-error";
+                }
+            } catch (e) {
+                statusBox.innerHTML = "Error: " + e;
+                statusBox.className = "status-box status-error";
+            }
+        }
+
+        // ===================== Helpers =====================
+
+        function formatInfoRow(key, value) {
+            let displayVal;
+            if (typeof value === 'object' && value !== null) {
+                if (Array.isArray(value)) {
+                    displayVal = value.join(', ');
+                } else {
+                    displayVal = Object.entries(value).map(([k, v]) => `${k}: ${v}`).join(', ');
+                }
+            } else {
+                displayVal = String(value);
+            }
+            return `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">` +
+                   `<td style="padding: 3px 10px 3px 0; font-weight: bold; white-space: nowrap; vertical-align: top;">${key}</td>` +
+                   `<td style="padding: 3px 0; word-break: break-all;">${displayVal}</td></tr>`;
+        }
+
+        // ===================== Auth Banner =====================
+
+        function renderAuthBanner(status) {
+            const adminIcon = document.getElementById('admin-status-icon');
+            const adminText = document.getElementById('admin-status-text');
+            adminIcon.textContent = '✓';
+            adminIcon.style.color = status.admin_session_valid ? 'var(--success-color)' : 'var(--error-color)';
+            adminText.textContent = `Admin Session: ${status.admin_session_message}`;
+
+            const gcertIcon = document.getElementById('gcert-status-icon');
+            const gcertText = document.getElementById('gcert-status-text');
+            gcertIcon.textContent = '✓';
+            gcertIcon.style.color = status.gcert_valid ? 'var(--success-color)' : 'var(--error-color)';
+            let gcertDisplay = status.gcert_message;
+            const parenMatch = gcertDisplay.match(/\((.+)\)/);
+            if (parenMatch) gcertDisplay = parenMatch[1];
+            gcertText.textContent = `gcert: ${gcertDisplay}`;
+
+            const gcloudIcon = document.getElementById('gcloud-status-icon');
+            const gcloudText = document.getElementById('gcloud-status-text');
+            const gcloudLoginBtn = document.getElementById('gcloud-login-btn');
+            gcloudIcon.textContent = '✓';
+            gcloudIcon.style.color = status.gcloud_valid ? 'var(--success-color)' : 'var(--error-color)';
+            let gcloudDisplay = status.gcloud_message || 'Unknown';
+            const gcloudParen = gcloudDisplay.match(/\((.+)\)/);
+            if (gcloudParen) gcloudDisplay = gcloudParen[1];
+            gcloudText.textContent = `gcloud: ${gcloudDisplay}`;
+            if (status.gcloud_valid) {
+                gcloudLoginBtn.classList.add('hidden');
+            } else {
+                gcloudLoginBtn.classList.remove('hidden');
+            }
+        }
+
+        async function refreshAuthStatus() {
+            const btn = document.getElementById('auth-refresh-btn');
+            btn.style.animation = 'spin 1s linear infinite';
+            btn.disabled = true;
+            await updateAuthStatus();
+            btn.style.animation = '';
+            btn.disabled = false;
+        }
+
+        async function updateAuthStatus() {
+            try {
+                const response = await fetch('/api/auth_status');
+                const status = await response.json();
+                renderAuthBanner(status);
+            } catch (e) {
+                console.error('Failed to update auth status:', e);
+            }
+        }
+
+        async function startGcloudLogin() {
+            const modal = document.getElementById('gcloud-auth-modal');
+            const step1 = document.getElementById('gcloud-auth-step1');
+            const step2 = document.getElementById('gcloud-auth-step2');
+            const result = document.getElementById('gcloud-auth-result');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            step1.classList.remove('hidden');
+            step2.classList.add('hidden');
+            result.classList.add('hidden');
+
+            try {
+                const resp = await fetch('/api/gcloud_auth_login', { method: 'POST' });
+                const data = await resp.json();
+                if (data.success && data.auth_url) {
+                    const urlEl = document.getElementById('gcloud-auth-url');
+                    urlEl.href = data.auth_url;
+                    urlEl.textContent = data.auth_url;
+                    step1.classList.add('hidden');
+                    step2.classList.remove('hidden');
+                    document.getElementById('gcloud-auth-code-input').value = '';
+                    document.getElementById('gcloud-auth-code-input').focus();
+                } else {
+                    step1.innerHTML = `<p style="color: var(--error-color);">Failed to start login: ${data.message || 'Unknown error'}</p>` +
+                        `<button onclick="closeGcloudModal()">Close</button>`;
+                }
+            } catch (e) {
+                step1.innerHTML = `<p style="color: var(--error-color);">Error: ${e}</p>` +
+                    `<button onclick="closeGcloudModal()">Close</button>`;
+            }
+        }
+
+        async function submitGcloudAuthCode() {
+            const code = document.getElementById('gcloud-auth-code-input').value.trim();
+            if (!code) {
+                alert('Please paste the authorization code.');
+                return;
+            }
+            const submitBtn = document.getElementById('gcloud-auth-submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                const resp = await fetch('/api/gcloud_auth_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auth_code: code })
+                });
+                const data = await resp.json();
+                const step2 = document.getElementById('gcloud-auth-step2');
+                const resultDiv = document.getElementById('gcloud-auth-result');
+                const resultText = document.getElementById('gcloud-auth-result-text');
+                step2.classList.add('hidden');
+                resultDiv.classList.remove('hidden');
+                if (data.success) {
+                    resultText.style.color = 'var(--success-color)';
+                    resultText.textContent = data.message || 'Authentication successful!';
+                    // Refresh auth status
+                    await updateAuthStatus();
+                } else {
+                    resultText.style.color = 'var(--error-color)';
+                    resultText.textContent = data.message || 'Authentication failed.';
+                }
+            } catch (e) {
+                document.getElementById('gcloud-auth-step2').classList.add('hidden');
+                const resultDiv = document.getElementById('gcloud-auth-result');
+                const resultText = document.getElementById('gcloud-auth-result-text');
+                resultDiv.classList.remove('hidden');
+                resultText.style.color = 'var(--error-color)';
+                resultText.textContent = 'Error: ' + e;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Code';
+            }
+        }
+
+        function closeGcloudModal() {
+            const modal = document.getElementById('gcloud-auth-modal');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+
+        // Check auth status on page load and every 60 seconds
+        updateAuthStatus();
+        setInterval(updateAuthStatus, 60000);
+
+        // ===================== Randomize Placeholder Examples =====================
+
+        (function randomizePlaceholders() {
+            function randDigits(n) {
+                let s = '';
+                for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+                return s;
+            }
+            function randHex(n) {
+                const chars = '0123456789abcdef';
+                let s = '';
+                for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
+                return s;
+            }
+            function randLower(n) {
+                const chars = 'abcdefghijklmnopqrstuvwxyz';
+                let s = '';
+                for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
+                return s;
+            }
+            function randUpper(n) {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                let s = '';
+                for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
+                return s;
+            }
+
+            const bugId = `e.g. TICKET-${randDigits(6)}`;
+            const tenantId = `e.g. ${randHex(8)}-${randHex(4)}-${randHex(4)}-${randHex(4)}-${randHex(12)}`;
+            const gcpProject = `e.g. project-${randLower(5)}`;
+            const partnerCode = `e.g. ${randUpper(6)}`;
+
+            document.getElementById('bug_id').placeholder = bugId;
+            document.getElementById('tenant_id').placeholder = tenantId;
+            document.getElementById('gcp_project_id').placeholder = gcpProject;
+            document.getElementById('partner_code').placeholder = partnerCode;
+        })();
+
+        // ===================== CSV Loading =====================
+
+        function loadCSV() {
+            const fileInput = document.getElementById('csvFileInput');
+            const statusDiv = document.getElementById('csvStatus');
+
+            if (!fileInput.files.length) {
+                statusDiv.textContent = '⚠ Please select a CSV file first';
+                statusDiv.style.color = 'orange';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    const lines = text.trim().split('\n');
+
+                    if (lines.length < 2) {
+                        statusDiv.textContent = '✗ Invalid CSV: No data rows found';
+                        statusDiv.style.color = 'var(--error-color)';
+                        return;
+                    }
+
+                    const headers = lines[0].split(',').map(h => h.trim());
+                    const values = lines[1].split(',').map(v => v.trim());
+
+                    const data = {};
+                    headers.forEach((header, index) => {
+                        data[header] = values[index] || '';
+                    });
+
+                    const fieldMappings = {
+                        'bug_id': 'bug_id',
+                        'ticket_id': 'bug_id',
+                        'tenant_id': 'tenant_id',
+                        'gcp_project_id': 'gcp_project_id',
+                        'soar_fe': 'soar_fe',
+                        'partner_code': 'partner_code',
+                        'admin_group': 'admin_group',
+                        'vector_id': 'vector_id',
+                        'opp_id': 'opp_id',
+                        'opportunity_id': 'opp_id',
+                        'first_name': 'first_name',
+                        'last_name': 'last_name',
+                        'email': 'email',
+                        'license_type': 'license_type',
+                        'expiration_date': 'expiration_date'
+                    };
+
+                    let fieldsPopulated = 0;
+                    let fieldsSkipped = 0;
+                    for (const [csvField, formField] of Object.entries(fieldMappings)) {
+                        if (data[csvField]) {
+                            if (lockedFields.has(formField)) {
+                                fieldsSkipped++;
+                                continue;
+                            }
+                            const element = document.getElementById(formField);
+                            if (element) {
+                                element.value = data[csvField];
+                                fieldsPopulated++;
+                            }
+                            currentState[formField] = data[csvField];
+                        }
+                    }
+
+                    let msg = `✓ Loaded ${fieldsPopulated} fields from CSV`;
+                    if (fieldsSkipped > 0) {
+                        msg += ` (${fieldsSkipped} skipped — locked by customer info)`;
+                    }
+                    statusDiv.textContent = msg;
+                    statusDiv.style.color = 'var(--success-color)';
+
+                } catch (error) {
+                    statusDiv.textContent = `✗ Error parsing CSV: ${error.message}`;
+                    statusDiv.style.color = 'var(--error-color)';
+                }
+            };
+
+            reader.onerror = function() {
+                statusDiv.textContent = '✗ Error reading file';
+                statusDiv.style.color = 'var(--error-color)';
+            };
+
+            reader.readAsText(file);
+        }
+
+    </script>
+</body>
+
+</html>

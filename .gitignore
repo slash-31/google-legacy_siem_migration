@@ -1,0 +1,43 @@
+# Keys and credentials
+keys/
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*.truststore
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+credentials*.json
+service-account*.json
+secrets.yml
+secrets.yaml
+secrets.json
+
+# Logs
+*.log
+
+# Data files
+*.csv
+
+# Environment
+.env
+.env.*
+*.tfvars
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Generated output
+.secops_auth_JWTs/
