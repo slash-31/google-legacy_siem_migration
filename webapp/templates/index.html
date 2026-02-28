@@ -179,47 +179,11 @@
             <h2>Pre-Check Results</h2>
             <div id="precheck-status" class="status-box">Checking...</div>
             <br>
-            <button id="step2-next" class="hidden" onclick="checkPartnerAssociation()">Next: Partner Check</button>
+            <button id="step2-next" class="hidden" onclick="runStep1()">Next: Generate Auth Keys</button>
             <button id="rerun-prechecks" class="hidden" onclick="startPreCheck()"
                 style="background: #ff8c00;">Re-run Pre-Checks</button>
             <button onclick="goToStep(1)"
                 style="background: transparent; border: 1px solid var(--border-color);">Back</button>
-        </div>
-
-        <!-- ===================== Step 2.5: Partner Association Fix ===================== -->
-        <div id="step2-5" class="section hidden">
-            <h2>Partner Association Check</h2>
-            <div class="status-box" style="background: rgba(255, 165, 0, 0.1); border-left: 4px solid orange;">
-                <strong>Partner Code Detected:</strong> <span id="partner-code-display"></span>
-            </div>
-            <p>If a partner association exists, we must remove it, update C4 entitlements, and then re-add it.</p>
-
-            <div style="margin-bottom: 15px;">
-                <button onclick="skipPartnerFlow()"
-                    style="background: transparent; border: 1px solid var(--border-color);">Skip Partner Removal (not needed)</button>
-            </div>
-
-            <div id="partner-flow-1">
-                <button onclick="removePartner()">1. Remove Partner Association</button>
-                <div id="remove-status" class="status-box hidden"></div>
-            </div>
-
-            <div id="partner-flow-2" class="hidden"
-                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
-                <h3>Manual Action Required</h3>
-                <p>Please go to <strong>C4</strong> and update the customer entitlements to match what they purchased.</p>
-                <button onclick="confirmC4Update()">2. I have updated C4 Entitlements</button>
-            </div>
-
-            <div id="partner-flow-3" class="hidden"
-                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
-                <button onclick="addPartner()">3. Re-add Partner Association</button>
-                <div id="add-status" class="status-box hidden"></div>
-            </div>
-
-            <div id="partner-flow-n" class="hidden" style="margin-top: 20px;">
-                <button onclick="runStep1()">Proceed to Auth Generation</button>
-            </div>
         </div>
 
         <!-- ===================== Step 3: Auth Generation ===================== -->
@@ -233,6 +197,21 @@
                         style="font-weight: bold; color: var(--accent-color);"></span></p>
                 <button onclick="toggleKeyContent()">Toggle Full JWT Content</button>
                 <pre id="key-content-display" class="hidden"></pre>
+
+                <h3 style="margin-top: 20px;">Migration Details</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 10px;">Click any value to copy it to your clipboard.</p>
+                <div style="overflow-x: auto;">
+                    <table id="step3-details-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
+                                <th style="padding: 8px 12px;">Field</th>
+                                <th style="padding: 8px 12px;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="step3-details-body">
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <br>
@@ -286,7 +265,45 @@
                     I have verified the SAML trace allows the SecOps Admin Group identified earlier.
                 </label>
             </div>
-            <button id="step4-next" onclick="runStep2()" disabled>Next: Configure SOAR</button>
+            <button id="step4-next" onclick="checkPartnerAssociation()" disabled>Next: Configure SOAR</button>
+        </div>
+
+        <!-- ===================== Step 4.5: Partner Association Fix ===================== -->
+        <div id="step4-5" class="section hidden">
+            <h2>Partner Association Check</h2>
+            <div class="status-box" style="background: rgba(255, 165, 0, 0.1); border-left: 4px solid orange;">
+                <strong>Partner Code Detected:</strong> <span id="partner-code-display"></span>
+            </div>
+            <div class="status-box" style="background: rgba(66,133,244,0.1); border-left: 4px solid #4285f4; margin-top: 10px;">
+                <strong>Note:</strong> Entitlements can only be changed after the partner has been removed. Go to C4 to update entitlements, then re-add the partner before proceeding.
+            </div>
+
+            <div style="margin-bottom: 15px; margin-top: 15px;">
+                <button onclick="skipPartnerFlow()"
+                    style="background: transparent; border: 1px solid var(--border-color);">Skip Partner Removal (not needed)</button>
+            </div>
+
+            <div id="partner-flow-1">
+                <button onclick="removePartner()">1. Remove Partner Association</button>
+                <div id="remove-status" class="status-box hidden"></div>
+            </div>
+
+            <div id="partner-flow-2" class="hidden"
+                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <h3>Manual Action Required</h3>
+                <p>Please go to <strong>C4</strong> and update the customer entitlements to match what they purchased.</p>
+                <button onclick="confirmC4Update()">2. I have updated C4 Entitlements</button>
+            </div>
+
+            <div id="partner-flow-3" class="hidden"
+                style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <button onclick="addPartner()">3. Re-add Partner Association</button>
+                <div id="add-status" class="status-box hidden"></div>
+            </div>
+
+            <div id="partner-flow-n" class="hidden" style="margin-top: 20px;">
+                <button onclick="runStep2()">Proceed to SOAR Configuration</button>
+            </div>
         </div>
 
         <!-- ===================== Step 5: Final Config ===================== -->
@@ -330,7 +347,7 @@
             document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
 
             let id = 'step' + index;
-            if (index === 2.5) id = 'step2-5';
+            if (index === 4.5) id = 'step4-5';
 
             document.getElementById(id).classList.remove('hidden');
 
@@ -646,19 +663,19 @@
             }
         }
 
-        // ===================== Step 2.5: Partner Association =====================
+        // ===================== Step 4.5: Partner Association =====================
 
         function checkPartnerAssociation() {
             if (currentState.partner_code && currentState.partner_code.trim() !== '') {
-                goToStep(2.5);
+                goToStep(4.5);
                 document.getElementById('partner-code-display').innerText = currentState.partner_code;
             } else {
-                runStep1();
+                runStep2();
             }
         }
 
         function skipPartnerFlow() {
-            runStep1();
+            runStep2();
         }
 
         async function removePartner() {
@@ -742,6 +759,7 @@
                         document.getElementById('client-email-display').innerText = data.client_email;
                         document.getElementById('key-content-display').innerText = data.key_content;
                         document.getElementById('vars-reveal').classList.remove('hidden');
+                        populateStep3Details();
                     }
 
                     document.getElementById('step3-next').classList.remove('hidden');
@@ -757,6 +775,60 @@
 
         function toggleKeyContent() {
             document.getElementById('key-content-display').classList.toggle('hidden');
+        }
+
+        function populateStep3Details() {
+            const details = [
+                { field: 'Tenant Code', value: currentState.soar_fe },
+                { field: 'Customer Name', value: currentState.customer_name },
+                { field: 'SecOps FE', value: currentState.frontend_path },
+                { field: 'Vector Account ID', value: currentState.vector_id },
+                { field: 'Opportunity ID', value: currentState.opp_id },
+                { field: 'SecOps Admin Group', value: currentState.admin_group },
+                { field: 'License Type', value: currentState.license_type },
+                { field: 'Expiration Date', value: currentState.expiration_date },
+                { field: 'First Name', value: currentState.first_name },
+                { field: 'Last Name', value: currentState.last_name },
+                { field: 'Email', value: currentState.email },
+            ];
+
+            const tbody = document.getElementById('step3-details-body');
+            tbody.innerHTML = '';
+
+            details.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+
+                const tdField = document.createElement('td');
+                tdField.style.padding = '8px 12px';
+                tdField.style.fontWeight = 'bold';
+                tdField.style.whiteSpace = 'nowrap';
+                tdField.textContent = row.field;
+
+                const tdValue = document.createElement('td');
+                tdValue.style.padding = '8px 12px';
+                const valueSpan = document.createElement('span');
+                valueSpan.style.cursor = 'pointer';
+                valueSpan.style.padding = '2px 6px';
+                valueSpan.style.borderRadius = '3px';
+                valueSpan.style.transition = 'background 0.2s';
+                if (row.value) {
+                    valueSpan.textContent = row.value;
+                    valueSpan.style.color = 'var(--accent-color)';
+                    valueSpan.style.background = 'rgba(66,133,244,0.1)';
+                    valueSpan.title = 'Click to copy';
+                    valueSpan.onclick = function() { copyToClipboard(row.value, this); };
+                } else {
+                    valueSpan.textContent = '(not set)';
+                    valueSpan.style.color = 'var(--text-secondary)';
+                    valueSpan.style.fontStyle = 'italic';
+                }
+                tdValue.appendChild(valueSpan);
+
+                tr.appendChild(tdField);
+                tr.appendChild(tdValue);
+                tbody.appendChild(tr);
+            });
         }
 
         // ===================== Step 4: SOAR Review =====================
