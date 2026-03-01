@@ -356,6 +356,26 @@ def check_key_file_exists(project_id: str) -> Tuple[bool, str]:
     return False, f"No key files found in {jwt_dir}/"
 
 
+def set_gcloud_project(project_id: str) -> Tuple[bool, str]:
+    """Set the default gcloud project to the one collected in the previous step."""
+    try:
+        result = subprocess.run(
+            ['gcloud', 'config', 'set', 'project', project_id],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            return True, f"Default project set to {project_id}"
+        return False, f"Failed to set project: {result.stderr.strip()}"
+    except FileNotFoundError:
+        return False, "gcloud CLI not found"
+    except subprocess.TimeoutExpired:
+        return False, "gcloud config set project timed out"
+    except Exception as e:
+        return False, f"Error setting project: {str(e)}"
+
+
 def run_step1_prechecks(tenant_id: str, gcp_project_id: str, env: str = "prod", region: str = "US") -> Dict:
     """
     Run all pre-checks for step1 migration.
@@ -370,9 +390,19 @@ def run_step1_prechecks(tenant_id: str, gcp_project_id: str, env: str = "prod", 
         'ready_to_proceed': False
     }
 
+    # Set the default gcloud project to the one collected from the user
+    set_project_passed, set_project_msg = set_gcloud_project(gcp_project_id)
+    results['checks'].append({
+        'name': 'Set gcloud Project',
+        'passed': set_project_passed,
+        'message': set_project_msg,
+        'critical': True
+    })
+    if not set_project_passed:
+        results['all_passed'] = False
+        results['critical_failures'].append('Set gcloud Project')
+
     # Critical checks (must pass)
-    # Note: gcert, admin_session, cli_main, and tenant existence are already
-    # validated in the "Get Started" flow before reaching pre-checks.
     critical_checks = [
         ("gcloud Authentication", check_gcloud_auth()),
         ("GCP Project Access", check_gcp_project_access(gcp_project_id))
@@ -391,7 +421,6 @@ def run_step1_prechecks(tenant_id: str, gcp_project_id: str, env: str = "prod", 
 
     # Non-critical checks (informational)
     info_checks = [
-        ("gcloud Project Context", check_gcloud_project_context(gcp_project_id)),
         ("SecOps Auth Status", check_secops_auth_enabled(tenant_id, env, region)),
         ("Service Account", check_service_account_exists(gcp_project_id)),
         ("Existing Key File", check_key_file_exists(gcp_project_id))

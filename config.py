@@ -9,7 +9,7 @@ environment variable before starting the application.
 import os
 
 # Path to the customer-management CLI tool
-CLI_MAIN_PATH = os.environ.get("CLI_MAIN_PATH", "/usr/local/bin/cli_main")
+CLI_MAIN_PATH = os.environ.get("CLI_MAIN_PATH", "/google/data/ro/teams/malachite/customermanagement/live/cli_main")
 
 # SSL/TLS certificate paths
 CERT_DIR = os.environ.get("CERT_DIR", os.path.expanduser("~/.certs"))
@@ -23,4 +23,4 @@ JWT_OUTPUT_DIR = os.environ.get(
 )
 
 # Domain used for corporate account validation (e.g. gcloud auth checks)
-AUTH_DOMAIN = os.environ.get("AUTH_DOMAIN", "example.com")
+AUTH_DOMAIN = os.environ.get("AUTH_DOMAIN", "google.com")
