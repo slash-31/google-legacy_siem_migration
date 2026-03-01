@@ -14,7 +14,7 @@
 
 <body>
     <div class="container">
-        <h1>SecOps Migration Assistant <span style="font-size: 0.4em; color: var(--text-secondary); font-weight: 400;">v1.1.0</span></h1>
+        <h1>SecOps Migration Assistant <span style="font-size: 0.4em; color: var(--text-secondary); font-weight: 400;">v1.2.0</span></h1>
 
         <!-- Auth Status Banner -->
         <div id="auth-status-banner" class="auth-status-banner">
@@ -178,6 +178,10 @@
         <div id="step2" class="section hidden">
             <h2>Pre-Check Results</h2>
             <div id="precheck-status" class="status-box">Checking...</div>
+            <details id="step2-commands" class="hidden" style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 0.9rem;">Commands</summary>
+                <div id="step2-commands-body" style="margin-top: 8px;"></div>
+            </details>
             <br>
             <button id="step2-next" class="hidden" onclick="runStep1()">Next: Generate Auth Keys</button>
             <button id="rerun-prechecks" class="hidden" onclick="startPreCheck()"
@@ -190,6 +194,10 @@
         <div id="step3" class="section hidden">
             <h2>Step 1: Enable Auth & Generate Keys</h2>
             <div id="step1-status" class="status-box">Running...</div>
+            <details id="step3-commands" style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 0.9rem;">Commands</summary>
+                <div id="step3-commands-body" style="margin-top: 8px;"></div>
+            </details>
 
             <div id="vars-reveal" class="hidden variables-container">
                 <h3>Authentication Successfully Configured</h3>
@@ -277,6 +285,10 @@
             <div class="status-box" style="background: rgba(66,133,244,0.1); border-left: 4px solid #4285f4; margin-top: 10px;">
                 <strong>Note:</strong> Entitlements can only be changed after the partner has been removed. Go to C4 to update entitlements, then re-add the partner before proceeding.
             </div>
+            <details id="step4-5-commands" style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 0.9rem;">Commands</summary>
+                <div id="step4-5-commands-body" style="margin-top: 8px;"></div>
+            </details>
 
             <div style="margin-bottom: 15px; margin-top: 15px;">
                 <button onclick="skipPartnerFlow()"
@@ -310,6 +322,10 @@
         <div id="step5" class="section hidden">
             <h2>Step 2: Update SOAR Configuration</h2>
             <div id="step2-status" class="status-box">Running...</div>
+            <details id="step5-commands" style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 0.9rem;">Commands</summary>
+                <div id="step5-commands-body" style="margin-top: 8px;"></div>
+            </details>
             <br>
             <button onclick="location.reload()">Start New Migration</button>
         </div>
@@ -317,6 +333,8 @@
     </div>
 
     <script>
+        const CLI_MAIN_PATH = '/google/data/ro/teams/malachite/customermanagement/live/cli_main';
+
         let currentState = {
             bug_id: '',
             tenant_id: '',
@@ -570,6 +588,13 @@
             }
 
             goToStep(2);
+            renderCommands('step2-commands-body', [
+                `gcloud config set project ${currentState.gcp_project_id}`,
+                `gcloud auth list --filter=status:ACTIVE --format=value(account)`,
+                `gcloud projects describe ${currentState.gcp_project_id} --format=value(projectId)`,
+                `${CLI_MAIN_PATH} customer info ${currentState.tenant_id} --env=prod --region=US`,
+                `gcloud iam service-accounts describe ${getExpectedSaEmail(currentState.gcp_project_id)} --project=${currentState.gcp_project_id} --format=value(email)`,
+            ]);
             const statusBox = document.getElementById('precheck-status');
             statusBox.innerHTML = "Running pre-checks...<br><br>" +
                 "⏳ gcloud authentication...<br>⏳ GCP project access...<br>" +
@@ -669,6 +694,10 @@
             if (currentState.partner_code && currentState.partner_code.trim() !== '') {
                 goToStep(4.5);
                 document.getElementById('partner-code-display').innerText = currentState.partner_code;
+                renderCommands('step4-5-commands-body', [
+                    `${CLI_MAIN_PATH} cu delete_customer_partner_association ${currentState.tenant_id} ${currentState.partner_code} --env=prod --region="US"`,
+                    `${CLI_MAIN_PATH} cu create_customer_partner_association ${currentState.tenant_id} ${currentState.partner_code} --env=prod --region="US"`,
+                ]);
             } else {
                 runStep2();
             }
@@ -738,6 +767,13 @@
 
         async function runStep1() {
             goToStep(3);
+            const saEmail = getExpectedSaEmail(currentState.gcp_project_id);
+            renderCommands('step3-commands-body', [
+                `${CLI_MAIN_PATH} customer enable_secops_authentication ${currentState.tenant_id} --env=prod --region=US`,
+                `gcloud iam service-accounts describe ${saEmail} --project=${currentState.gcp_project_id} --format='value(email)'`,
+                `gcloud iam service-accounts list --project=${currentState.gcp_project_id} --format='value(email)'`,
+                `gcloud iam service-accounts keys create <key_path> --iam-account=${saEmail} --project=${currentState.gcp_project_id}`,
+            ]);
             const statusBox = document.getElementById('step1-status');
             statusBox.innerHTML = "Running Step 1 (Auth & Key Gen)... This may take a minute.";
 
@@ -932,6 +968,12 @@
 
         async function runStep2() {
             goToStep(5);
+            const fe = (currentState.soar_fe || '').toLowerCase();
+            renderCommands('step5-commands-body', [
+                `${CLI_MAIN_PATH} customer set_customer_response_platform_uri ${currentState.tenant_id} RESPONSE_PLATFORM_TYPE_SIEMPLIFY https://${fe}.siemplify-soar.com:443 --env=prod --region=US`,
+                `${CLI_MAIN_PATH} customer set_customer_soar_api_uri ${currentState.tenant_id} https://${fe}.siemplify-soar.com --env=prod --region=US`,
+                `${CLI_MAIN_PATH} feature set ${currentState.tenant_id} soar_enabled=true "Enabling SIEM SOAR connection" --env=prod --region=US`,
+            ]);
             const statusBox = document.getElementById('step2-status');
             statusBox.innerHTML = "Running Step 2 (SOAR Config)...";
 
@@ -957,6 +999,31 @@
         }
 
         // ===================== Helpers =====================
+
+        function renderCommands(containerId, commands) {
+            const body = document.getElementById(containerId);
+            if (!body) return;
+            body.innerHTML = '';
+            commands.forEach((cmd, i) => {
+                const pre = document.createElement('pre');
+                pre.style.cssText = 'background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; margin: 6px 0; cursor: pointer; white-space: pre-wrap; word-break: break-all;';
+                pre.textContent = cmd;
+                pre.title = 'Click to copy';
+                pre.onclick = function() { copyToClipboard(cmd, this); };
+                body.appendChild(pre);
+            });
+            // Show parent <details> if it was hidden
+            const details = body.closest('details');
+            if (details) details.classList.remove('hidden');
+        }
+
+        function getExpectedSaEmail(projectId) {
+            const match = projectId.match(/malachite-(\w+)/);
+            if (match) {
+                return match[1].toLowerCase() + '-secops-auth@' + projectId + '.iam.gserviceaccount.com';
+            }
+            return '<sa_email>@' + projectId + '.iam.gserviceaccount.com';
+        }
 
         function formatInfoRow(key, value) {
             let displayVal;
