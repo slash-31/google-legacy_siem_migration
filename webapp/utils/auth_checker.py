@@ -192,16 +192,10 @@ def validate_startup_requirements():
     """
     Validate authentication at startup.
 
-    Checks gcloud, gcert, and admin_session. If any fail, prints an
-    error message and exits. The webapp will not start.
+    Checks gcert and admin_session. If any fail, prints an error message
+    and exits. gcloud auth is validated later in the pre-check step.
     """
     failures = []
-
-    gcloud_valid, gcloud_msg = check_gcloud_auth()
-    if gcloud_valid:
-        logging.info(f"gcloud auth: {gcloud_msg}")
-    else:
-        failures.append(("gcloud", gcloud_msg, "gcloud auth login"))
 
     gcert_valid, gcert_msg = check_gcert()
     if gcert_valid:
@@ -224,7 +218,6 @@ def validate_startup_requirements():
             print(f"  {name}: {msg}")
             print(f"    Fix: {fix}")
             print()
-        print(f"  gcloud must use a @{REQUIRED_DOMAIN} account.")
         print("=" * 60)
         print()
         sys.exit(1)

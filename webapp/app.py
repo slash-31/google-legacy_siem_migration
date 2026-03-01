@@ -182,7 +182,7 @@ if __name__ == '__main__':
     import ssl
     import socket
 
-    # Check gcloud authentication — exits if not authenticated with @google.com
+    # Check gcert and admin_session — exits if not met (gcloud auth checked in pre-checks)
     auth_checker.validate_startup_requirements()
 
     # SSL/TLS Configuration
