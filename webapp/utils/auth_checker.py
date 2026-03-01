@@ -168,23 +168,20 @@ def check_gcloud_auth() -> Tuple[bool, str]:
 
 def get_auth_status() -> Dict[str, any]:
     """
-    Get comprehensive authentication status.
+    Get authentication status for the UI banner.
 
-    Returns:
-        Dict with admin_session, gcert, and gcloud status fields.
+    Checks admin_session and gcert only. gcloud auth is validated
+    later in the Step 2 pre-checks.
     """
     admin_valid, admin_msg = check_admin_session()
     gcert_valid, gcert_msg = check_gcert()
-    gcloud_valid, gcloud_msg = check_gcloud_auth()
 
     return {
         'admin_session_valid': admin_valid,
         'gcert_valid': gcert_valid,
-        'gcloud_valid': gcloud_valid,
         'admin_session_message': admin_msg,
         'gcert_message': gcert_msg,
-        'gcloud_message': gcloud_msg,
-        'all_valid': admin_valid and gcert_valid and gcloud_valid
+        'all_valid': admin_valid and gcert_valid
     }
 
 

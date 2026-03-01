@@ -26,10 +26,6 @@
                 <span id="gcert-status-icon" class="status-icon">⏳</span>
                 <span id="gcert-status-text">gcert: Checking...</span>
             </div>
-            <div class="status-item">
-                <span id="gcloud-status-icon" class="status-icon">⏳</span>
-                <span id="gcloud-status-text">gcloud: Checking...</span>
-            </div>
             <button onclick="refreshAuthStatus()" title="Re-check auth status"
                 style="background: transparent; border: 1px solid var(--border-color); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 1rem; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); margin-left: auto;"
                 id="auth-refresh-btn">&#x21bb;</button>
@@ -1056,11 +1052,6 @@
             gcertIcon.style.color = status.gcert_valid ? 'var(--success-color)' : 'var(--error-color)';
             gcertText.textContent = `gcert: ${status.gcert_message}`;
 
-            const gcloudIcon = document.getElementById('gcloud-status-icon');
-            const gcloudText = document.getElementById('gcloud-status-text');
-            gcloudIcon.textContent = status.gcloud_valid ? '✓' : '✗';
-            gcloudIcon.style.color = status.gcloud_valid ? 'var(--success-color)' : 'var(--error-color)';
-            gcloudText.textContent = `gcloud: ${status.gcloud_message || 'Unknown'}`;
         }
 
         async function refreshAuthStatus() {
