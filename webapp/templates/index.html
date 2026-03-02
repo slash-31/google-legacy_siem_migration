@@ -391,6 +391,30 @@
             currentState.bug_id = bugId;
             currentState.tenant_id = tenantId;
 
+            // Check for existing session
+            try {
+                const sessResp = await fetch(`/api/session/${encodeURIComponent(tenantId)}`);
+                const sessData = await sessResp.json();
+                if (sessData.found) {
+                    const sess = sessData.session;
+                    if (sess.status === 'completed') {
+                        showCompletedSummary(sess);
+                        return;
+                    }
+                    // In-progress session — offer to resume
+                    const stepNames = ['Get Started', 'Review Info', 'Pre-Checks', 'Auth & Key Gen', 'SOAR Review', 'SOAR Config'];
+                    const stepLabel = stepNames[Math.floor(sess.current_step)] || `Step ${sess.current_step}`;
+                    if (confirm(`Found an in-progress session for this tenant at "${stepLabel}". Resume where you left off?\n\nClick OK to resume, or Cancel to start fresh.`)) {
+                        restoreSession(sess);
+                        return;
+                    } else {
+                        await fetch(`/api/session/${encodeURIComponent(tenantId)}`, { method: 'DELETE' });
+                    }
+                }
+            } catch (e) {
+                console.error('Session check failed (continuing):', e);
+            }
+
             // Validate auth first
             errorDiv.textContent = '';
             errorDiv.classList.remove('hidden');
@@ -439,6 +463,7 @@
                 }
 
                 goToStep(1);
+                saveSession(1, {customer_info: info});
 
             } catch (e) {
                 errorDiv.style.color = 'var(--error-color)';
@@ -633,6 +658,7 @@
                     statusBox.className = "status-box status-success";
                     document.getElementById('step2-next').classList.remove('hidden');
                     document.getElementById('rerun-prechecks').classList.add('hidden');
+                    saveSession(2, {precheck: data});
                 } else {
                     html += `<div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 4px solid var(--error-color); margin-top: 10px;">`;
                     html += `<strong style="color: var(--error-color);">✗ Cannot Proceed</strong><br>`;
@@ -719,6 +745,7 @@
                     statusBox.innerHTML = "Success: " + data.message;
                     statusBox.className = "status-box status-success";
                     document.getElementById('partner-flow-2').classList.remove('hidden');
+                    saveSession(4.5, {partner_removed: true});
                 } else {
                     statusBox.innerHTML = "Error: " + data.message;
                     statusBox.className = "status-box status-error";
@@ -749,6 +776,7 @@
                     statusBox.innerHTML = "Success: " + data.message;
                     statusBox.className = "status-box status-success";
                     document.getElementById('partner-flow-n').classList.remove('hidden');
+                    saveSession(4.5, {partner_added: true});
                 } else {
                     statusBox.innerHTML = "Error: " + data.message;
                     statusBox.className = "status-box status-error";
@@ -795,6 +823,7 @@
                     }
 
                     document.getElementById('step3-next').classList.remove('hidden');
+                    saveSession(3, {step1: {success: true, client_email: data.client_email, key_path: data.key_path}});
                 } else {
                     statusBox.innerHTML = "Failed: " + data.message;
                     statusBox.className = "status-box status-error";
@@ -867,6 +896,7 @@
 
         function waitForSoar() {
             goToStep(4);
+            saveSession(4);
 
             const fp = currentState.frontend_path || currentState.soar_fe || '';
             const frontendUrl = fp ? `https://${fp}.backstory.chronicle.security/` : '';
@@ -984,6 +1014,7 @@
                 if (data.success) {
                     statusBox.innerHTML = "Success! SOAR Enabled.";
                     statusBox.className = "status-box status-success";
+                    saveSession(5, {step2: {success: true, message: data.message}});
                 } else {
                     statusBox.innerHTML = "Failed: " + data.message;
                     statusBox.className = "status-box status-error";
@@ -992,6 +1023,125 @@
                 statusBox.innerHTML = "Error: " + e;
                 statusBox.className = "status-box status-error";
             }
+        }
+
+        // ===================== Session Tracking =====================
+
+        async function saveSession(stepIndex, extraResults) {
+            if (!currentState.tenant_id) return;
+            const completedSteps = [];
+            for (let i = 0; i < Math.floor(stepIndex); i++) completedSteps.push(i);
+            const payload = {
+                tenant_id: currentState.tenant_id,
+                status: stepIndex >= 5 ? 'completed' : 'in_progress',
+                current_step: stepIndex,
+                completed_steps: completedSteps,
+                state: currentState,
+                step_results: extraResults || {}
+            };
+            try {
+                await fetch('/api/session/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {
+                console.error('Failed to save session:', e);
+            }
+        }
+
+        function restoreSession(sess) {
+            // Restore currentState
+            if (sess.state) {
+                Object.assign(currentState, sess.state);
+            }
+
+            // Populate form fields
+            const fieldMap = {
+                bug_id: 'bug_id', tenant_id: 'tenant_id',
+                gcp_project_id: 'gcp_project_id', soar_fe: 'soar_fe',
+                partner_code: 'partner_code', admin_group: 'admin_group',
+                vector_id: 'vector_id', opp_id: 'opp_id',
+                first_name: 'first_name', last_name: 'last_name',
+                email: 'email', license_type: 'license_type',
+                expiration_date: 'expiration_date'
+            };
+            Object.entries(fieldMap).forEach(([stateKey, fieldId]) => {
+                const el = document.getElementById(fieldId);
+                if (el && currentState[stateKey]) {
+                    el.value = currentState[stateKey];
+                }
+            });
+
+            // Restore step results display for step 3+
+            const results = sess.step_results || {};
+            if (results.step1 && currentState.client_email) {
+                document.getElementById('client-email-display').innerText = currentState.client_email;
+                if (currentState.key_content) {
+                    document.getElementById('key-content-display').innerText = currentState.key_content;
+                }
+                document.getElementById('vars-reveal').classList.remove('hidden');
+                document.getElementById('step3-next').classList.remove('hidden');
+            }
+
+            goToStep(sess.current_step);
+        }
+
+        function showCompletedSummary(sess) {
+            const state = sess.state || {};
+            const results = sess.step_results || {};
+            const step0 = document.getElementById('step0');
+            step0.classList.remove('hidden');
+
+            let html = '<h2>Migration Completed</h2>';
+            html += '<div style="background: rgba(0,255,0,0.1); padding: 15px; border-left: 4px solid var(--success-color); border-radius: 6px; margin-bottom: 20px;">';
+            html += '<strong style="color: var(--success-color);">This tenant has already been migrated.</strong>';
+            html += '</div>';
+            html += '<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">';
+
+            const rows = [
+                ['Ticket ID', state.bug_id],
+                ['Tenant ID', state.tenant_id],
+                ['Customer Name', state.customer_name],
+                ['GCP Project', state.gcp_project_id],
+                ['SOAR FE', state.soar_fe],
+                ['SA Email', state.client_email],
+                ['Completed At', sess.updated_at],
+            ];
+
+            rows.forEach(([label, value]) => {
+                html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">`;
+                html += `<td style="padding: 6px 10px; font-weight: bold; white-space: nowrap;">${label}</td>`;
+                html += `<td style="padding: 6px 10px; word-break: break-all;">${value || '—'}</td></tr>`;
+            });
+            html += '</table>';
+
+            // Step completion status
+            const stepNames = ['Get Started', 'Review Info', 'Pre-Checks', 'Auth & Key Gen', 'SOAR Review', 'SOAR Config'];
+            html += '<strong>Steps:</strong><br>';
+            stepNames.forEach((name, i) => {
+                const done = (sess.completed_steps || []).includes(i);
+                const icon = done ? '<span style="color: var(--success-color);">&#10003;</span>' : '<span style="color: var(--text-secondary);">—</span>';
+                html += `${icon} ${name}<br>`;
+            });
+
+            html += '<br><button onclick="location.reload()">Start New Migration</button> ';
+            html += `<button onclick="clearSessionAndRestart('${state.tenant_id}')" style="background: transparent; border: 1px solid var(--border-color);">Clear Session &amp; Restart</button>`;
+
+            step0.innerHTML = html;
+
+            // Hide all other steps
+            document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+            step0.classList.remove('hidden');
+        }
+
+        async function clearSessionAndRestart(tenantId) {
+            try {
+                await fetch(`/api/session/${encodeURIComponent(tenantId)}`, { method: 'DELETE' });
+            } catch (e) {
+                console.error('Failed to delete session:', e);
+            }
+            location.reload();
         }
 
         // ===================== Helpers =====================

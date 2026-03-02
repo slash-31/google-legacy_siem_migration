@@ -24,3 +24,9 @@ JWT_OUTPUT_DIR = os.environ.get(
 
 # Domain used for corporate account validation (e.g. gcloud auth checks)
 AUTH_DOMAIN = os.environ.get("AUTH_DOMAIN", "google.com")
+
+# Directory for session tracking files (keyed by tenant_id)
+SESSION_DIR = os.environ.get(
+    "SESSION_DIR",
+    os.path.join(os.path.expanduser("~"), ".secops_migration_sessions"),
+)

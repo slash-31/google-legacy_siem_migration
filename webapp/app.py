@@ -9,7 +9,7 @@ import logging
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webapp.utils import script_runner, cm_parser, auth_checker, precheck
+from webapp.utils import script_runner, cm_parser, auth_checker, precheck, session_tracker
 
 app = Flask(__name__)
 # Generate a secret key for session storage
@@ -142,6 +142,30 @@ def add_partner():
     result = script_runner.add_partner_association(tenant_id, partner_code, env=env)
     return jsonify(result)
 
+
+@app.route('/api/session/<tenant_id>', methods=['GET'])
+def get_session(tenant_id):
+    """Load a saved session for the given tenant."""
+    sess = session_tracker.load_session(tenant_id)
+    if sess:
+        return jsonify({"found": True, "session": sess})
+    return jsonify({"found": False})
+
+@app.route('/api/session/save', methods=['POST'])
+def save_session():
+    """Save or update session state for a tenant."""
+    data = request.json
+    tenant_id = data.get('tenant_id')
+    if not tenant_id:
+        return jsonify({"error": "tenant_id is required"}), 400
+    saved = session_tracker.save_session(tenant_id, data)
+    return jsonify({"success": True, "session": saved})
+
+@app.route('/api/session/<tenant_id>', methods=['DELETE'])
+def delete_session(tenant_id):
+    """Delete a saved session for the given tenant."""
+    session_tracker.delete_session(tenant_id)
+    return jsonify({"success": True})
 
 @app.route('/api/set_gcloud_project', methods=['POST'])
 def set_gcloud_project():
